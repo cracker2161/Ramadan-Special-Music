@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel - Ramadan Music</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .admin-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        .platform-entry {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .platform-entry input {
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-add {
+            background: #2196F3;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+
+        .save-status {
+            text-align: center;
+            margin-top: 20px;
+            color: #4CAF50;
+            font-weight: 500;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <h1>Admin Panel</h1>
+
+        <div class="form-group">
+            <label>Title:</label>
+            <input type="text" id="title" placeholder="Enter title">
+        </div>
+
+        <div class="form-group">
+            <label>Cover Image URL:</label>
+            <input type="text" id="coverImage" placeholder="Enter image URL">
+        </div>
+
+        <div class="form-group">
+            <label>YouTube Video URL:</label>
+            <input type="text" id="youtubeUrl" placeholder="Enter YouTube video URL">
+        </div>
+
+        <h2>Music Platforms</h2>
+        <button class="btn-add" onclick="addPlatform()">Add New Platform</button>
+        <div id="platforms-container"></div>
+
+        <div class="actions">
+            <button class="btn-primary" onclick="saveChanges()">Save All Changes</button>
+            <button class="btn-danger" onclick="resetChanges()">Reset</button>
+        </div>
+
+        <div id="saveStatus" class="save-status">Changes saved successfully!</div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let currentConfig;
+
+        function updateForm(config) {
+            document.getElementById('title').value = config.title;
+            document.getElementById('coverImage').value = config.coverImage;
+            document.getElementById('youtubeUrl').value = config.youtubeUrl;
+
+            const platformsContainer = document.getElementById('platforms-container');
+            platformsContainer.innerHTML = '';
+
+            config.platforms.forEach((platform, index) => {
+                const div = document.createElement('div');
+                div.className = 'platform-entry';
+                div.innerHTML = `
+                    <input type="text" placeholder="Platform Name" value="${platform.name}" 
+                           onchange="updatePlatform(${index}, 'name', this.value)">
+                    <input type="text" placeholder="Logo URL" value="${platform.logo}" 
+                           onchange="updatePlatform(${index}, 'logo', this.value)">
+                    <input type="text" placeholder="Link" value="${platform.link}" 
+                           onchange="updatePlatform(${index}, 'link', this.value)">
+                    <button class="btn-danger" onclick="removePlatform(${index})">Remove</button>
+                `;
+                platformsContainer.appendChild(div);
+            });
+        }
+
+        function addPlatform() {
+            currentConfig.platforms.push({
+                name: "",
+                logo: "",
+                link: ""
+            });
+            updateForm(currentConfig);
+        }
+
+        function removePlatform(index) {
+            currentConfig.platforms.splice(index, 1);
+            updateForm(currentConfig);
+        }
+
+        function updatePlatform(index, field, value) {
+            currentConfig.platforms[index][field] = value;
+        }
+
+        function showSaveStatus() {
+            const status = document.getElementById('saveStatus');
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        function saveChanges() {
+            const newConfig = {
+                title: document.getElementById('title').value,
+                coverImage: document.getElementById('coverImage').value,
+                youtubeUrl: document.getElementById('youtubeUrl').value,
+                platforms: currentConfig.platforms
+            };
+
+            socket.emit('updateConfig', newConfig);
+            showSaveStatus();
+        }
+
+        function resetChanges() {
+            fetch('/api/config')
+                .then(res => res.json())
+                .then(config => {
+                    currentConfig = config;
+                    updateForm(config);
+                });
+        }
+
+        // Initial load
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(config => {
+                currentConfig = config;
+                updateForm(config);
+            });
+
+        // Listen for updates from other admin sessions
+        socket.on('configUpdated', (newConfig) => {
+            currentConfig = newConfig;
+            updateForm(newConfig);
+        });
+    </script>
+</body>
+</html>
